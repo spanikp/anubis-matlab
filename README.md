@@ -19,5 +19,5 @@ xtr2CSskyplot('example/xtr/GANP.xtr')
 
 #### Examples
 <p align="center">
-  <img src="example/img/GANP_GNSS_MPC1.png" width="700"/>
+  <img src="example/img/GANP_GNSS_MPC1.png" width="1000"/>
 </p>
