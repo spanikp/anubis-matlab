@@ -51,8 +51,8 @@ elseif nargin == 3
    options = opt;
 
 elseif nargin == 4
-   if numel(options) ~= 3
-      error('Input variable "limAndTicks" have to be cell of the following form {[1x2 array], [1xn array], [1xn char]}!') 
+   if numel(options) ~= numel(opt)
+      error('Wrong number of elements in "options" (%d elements allowed)!',numel(opt)) 
    end
 else
    error('Only 2, 3 or 4 input values are allowed!') 
@@ -74,18 +74,21 @@ myColorMap = colormap(jet); close; % Command colormap open figure!
 myColorMap = [[1,1,1]; myColorMap];
 
 % Satellite's data loading
+pos = [];
+allGNSSSatPos.azi = [];
+allGNSSSatPos.ele = [];
 for i = 1:length(GNScell)
     % Find position estimate
     selpos = cellfun(@(c) strcmp(['=XYZ', GNScell{i}],c(1:7)), data);
     postext = char(data(selpos));
-    pos = str2num(postext(30:76));
+    pos = [pos; str2num(postext(30:76))];
     
     % Elevation loading
     selELE_GNS = cellfun(@(c) strcmp([GNScell{i}, 'ELE'],c(2:7)), data);
     dataCell = data(selELE_GNS);
     [timeStamp, meanVal, dataMatrix] = dataCell2matrix(dataCell);
     ELE.(GNScell{i}).time = timeStamp;
-    ELE.(GNScell{i}).meanVals = meanVal;
+    ELE.(GNScell{i}).mean3Vals = meanVal;
     ELE.(GNScell{i}).vals = dataMatrix;
     sel1 = ~isnan(dataMatrix);
     
@@ -104,6 +107,10 @@ for i = 1:length(GNScell)
        if all(ELE.(GNScell{i}).time == AZI.(GNScell{i}).time)
           timeStampsUni = timeStamp;
        end
+       
+       % Add satellites position to all GNSS positions
+       allGNSSSatPos.azi = [allGNSSSatPos.azi; AZI.(GNScell{i}).vals];
+       allGNSSSatPos.ele = [allGNSSSatPos.ele; ELE.(GNScell{i}).vals];
     else
        error('Reading ELE and AZI failed, not equal number of ELE and AZI epochs!')
     end
@@ -112,6 +119,8 @@ for i = 1:length(GNScell)
     selMP_GNS = cellfun(@(c) strcmp([' ', GNScell{i}, 'M', MPcode(end-1:end)], c(1:7)), data);
     if nnz(selMP_GNS) == 0
         warning('For %s system MP combination %s not available!',GNScell{i},MPcode)
+        AZI.(GNScell{i}).vector = [];
+        ELE.(GNScell{i}).vector = [];
         continue
     end
     dataCell = data(selMP_GNS);
@@ -137,24 +146,39 @@ for i = 1:length(GNScell)
     ELE.(GNScell{i}).vector = ELE.(GNScell{i}).vals(sel);
     AZI.(GNScell{i}).vector = AZI.(GNScell{i}).vals(sel);
     MP.(GNScell{i}).vector = MP.(GNScell{i}).vals(sel);
+end
+
+allGNSSSatPos.azi = allGNSSSatPos.azi(:);
+allGNSSSatPos.ele = allGNSSSatPos.ele(:);
+selNotNan = ~isnan(allGNSSSatPos.azi) & ~isnan(allGNSSSatPos.ele);
+allGNSSSatPos.azi = allGNSSSatPos.azi(selNotNan);
+allGNSSSatPos.ele = allGNSSSatPos.ele(selNotNan);
+
+
+% Loop for plotting when data are loaded
+for i = 1:length(GNScell)
+    % Check if data are available
+    if isempty(AZI.(GNScell{i}).vector)
+        continue
+    end
     
     % Interpolate to regular grid
     aziBins = 0:3:360;
     eleBins = 0:3:90;
     [azig, eleg] = meshgrid(aziBins, eleBins);
     F = scatteredInterpolant(AZI.(GNScell{i}).vector,ELE.(GNScell{i}).vector,MP.(GNScell{i}).vector,'linear','none');
-    
     mpg = F(azig,eleg);
     mpg(isnan(mpg)) = -1;
     
     % Check for useDataMasking settings
     if options.getMaskFromData
-        visibleBins = getVisibilityMask(AZI.(GNScell{i}).vector,ELE.(GNScell{i}).vector,[3, 3],options.cutOffValue);
+        visibleBins = getVisibilityMask(allGNSSSatPos.azi,allGNSSSatPos.ele,[3, 3],options.cutOffValue);
+        %visibleBins = getVisibilityMask(AZI.(GNScell{i}).vector,ELE.(GNScell{i}).vector,[3, 3],options.cutOffValue);
         mpg(~visibleBins) = -1;
     end
     
     % Determine noSatZone bins
-    [x_edge,y_edge] = getNoSatZone(GNScell{i},pos);
+    [x_edge,y_edge] = getNoSatZone(GNScell{i},mean(pos));
     xq = (90 - eleg).*sind(azig);
     yq = (90 - eleg).*cosd(azig);
     in = inpolygon(xq,yq,x_edge,y_edge);
@@ -167,7 +191,7 @@ for i = 1:length(GNScell)
     
     % Set colormap and control colorbar
     colormap(myColorMap)
-    if opt.colorBarOn
+    if options.colorBarOn
         c = colorbar;
         colLimits = options.colorBarLimits;
         colLimits(1) = colLimits(1) + 5;
@@ -193,7 +217,7 @@ for i = 1:length(GNScell)
     % Exporting figure
     if saveFig == true
        splittedInputName = strsplit(xtrFileName,{'.','/'});
-       figName = [fullfile(opt.figSavePath, splittedInputName{end-1}), '_', GNScell{i}, '_MP', MPcode];
+       figName = [fullfile(options.figSavePath, splittedInputName{end-1}), '_', GNScell{i}, '_MP', MPcode];
        print(figName,'-dpng',sprintf('-r%s',options.figResolution))
     end
 end

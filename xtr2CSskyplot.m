@@ -1,61 +1,78 @@
-function xtr2CSskyplot(xtrFileName, carrierCode, saveFig, options)
+function xtr2CSskyplot(xtrFileName, saveFig, options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Function to read Gnut-Anubis XTR output file and make MP skyplot graphs.
-% Process iterates through all available satellite systems (it will
-% detect automatically) and try to plot given MP combination.
+% Function to read Gnut-Anubis XTR output file and make skyplot graphs of
+% cycle-slip distribution over the sky. Process iterates through all
+% available satellite systems and make cycle-slip density plot per azimuth/
+% elevation bin (3x3 degree) for all GNSS together.
 %
 % Input:
 % xtrFileName - name of XTR file
-% MPcode - 2-char representation of MP code combination to plot
-%        - values corresponding to RINEX v2 code measurements
 %
 % Optional:
 % saveFig - true/false flag to export plots to PNG file (default: true)
 % options - structure with the following settings:
-%      colorBarLimits = [0 120]; % Range of colorbar
-%      colorBarTicks = 0:20:120; % Ticks on colorbar 
-%      figResolution = '200';    % Output PNG resolution
-%      getMaskFromData = false;   % Derive terrain mask from available data
-%      cutOffValue = 0;          % Value of elevation cutoff on skyplots
+%      colorBarLimits - 1x2 array to set colorbar range (if set empty range
+%                       of colorbar will be set to [0, max(slips per bin)])
+%      colorBarOn - set visibility of colorbar (default: true)
+%      figResolution - resolution of output image (default 200)
+%      figSavePath - path to current location of this function
+%      getMaskFromData - derive terrain mask from available data
+%      cutOffValue - set value of elevation cutoff on skyplots
 %
-% Requirements:
-% polarplot3d.m, findGNSTypes.m, dataCell2matrix.m, getNoSatZone.m
-%
-% Peter Spanik, 7.10.2018
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Close all opened figures
 close all
+funDir = strsplit(mfilename('fullpath'),'/');
 
 % Default options
-opt = struct('colorBarLimits',[0, 120],...
-                    'colorBarTicks', 0:20:120,...
-                    'figResolution','200',...
-                    'getMaskFromData', false,...
-                    'cutOffValue',0);
+opt = struct('colorBarLimits',[],...
+             'colorBarOn',true,...
+             'figResolution','200',...
+             'figSavePath',strjoin(funDir(1:end-1),'/'),...
+             'getMaskFromData', true,...
+             'cutOffValue',0);
 
 % Check input values
-if nargin == 2
+if nargin == 1
    saveFig = true;
    options = opt;
-   if ~ischar(xtrFileName) || ~ischar(carrierCode)
-      error('Inputs "xtrFileName" and "carrierCode" have to be strings!') 
+   if ~ischar(xtrFileName)
+      error('Inputs "xtrFileName" has to be string!') 
    end
    
-elseif nargin == 3
-    saveFig = logical(saveFig);
-   if ~ischar(xtrFileName) || ~ischar(carrierCode) || numel(saveFig) ~= 1 
-      error('Inputs "xtrFileName","carrierCode" have to be strings and "saveFig" has to be single value!') 
+elseif nargin == 2
+   saveFig = logical(saveFig);
+   if ~ischar(xtrFileName) || numel(saveFig) ~= 1 
+       error('Inputs "xtrFileName" has to be string and "saveFig" has to be single logical value!') 
    end
    options = opt;
 
-elseif nargin == 4
-   if numel(options) ~= 3
-      error('Input variable "limAndTicks" have to be cell of the following form {[1x2 array], [1xn array], [1xn char]}!') 
+elseif nargin == 3
+   if numel(options) ~= numel(opt)
+      error('Wrong number of elements in "options" (%d elements allowed)!',numel(opt)) 
    end
 else
-   error('Only 2, 3 or 4 input values are allowed!') 
+   error('Only 1, 2 or 3 input values are allowed!') 
 end
+
+% %%%%%%% SCRIPT
+% close all
+% clear
+% clc
+% 
+% funDir = strsplit(mfilename('fullpath'),'/');
+% opt = struct('colorBarLimits',[],...
+%              'colorBarOn',false,...
+%              'figResolution','200',...
+%              'figSavePath',strjoin(funDir(1:end-1),'/'),...
+%              'getMaskFromData', true,...
+%              'cutOffValue',0);
+%          
+% saveFig = true;
+% options = opt;
+% xtrFileName = 'example/xtr/GANP.xtr';
+% %%%%%%% END OF SCRIPT
 
 % File loading
 finp = fopen(xtrFileName,'r');
@@ -68,11 +85,9 @@ data = data(~cellfun(@(c) isempty(c), data));
 % Find indices of Main Chapters (#)
 GNScell = findGNSTypes(data);
 
-% Set custom colormap -> empty bin = white
-myColorMap = colormap(jet); close; % Command colormap open figure!
-myColorMap = [[1,1,1]; myColorMap];
-
 % Satellite's data loading
+allGNSSSatPos.azi = [];
+allGNSSSatPos.ele = [];
 for i = 1:length(GNScell)
     % Find position estimate
     selpos = cellfun(@(c) strcmp(['=XYZ', GNScell{i}],c(1:7)), data);
@@ -115,7 +130,16 @@ for i = 1:length(GNScell)
     end
     dataCell = data(selCS_GNS);
     [~, ~, CS.(GNScell{i})] = dataCell2CSmatrix(dataCell);
+    
+    % Add satellites position to all GNSS positions
+    allGNSSSatPos.azi = [allGNSSSatPos.azi; AZI.(GNScell{i}).vals];
+    allGNSSSatPos.ele = [allGNSSSatPos.ele; ELE.(GNScell{i}).vals];
 end
+allGNSSSatPos.azi = allGNSSSatPos.azi(:);
+allGNSSSatPos.ele = allGNSSSatPos.ele(:);
+selNotNan = ~isnan(allGNSSSatPos.azi) & ~isnan(allGNSSSatPos.ele);
+allGNSSSatPos.azi = allGNSSSatPos.azi(selNotNan);
+allGNSSSatPos.ele = allGNSSSatPos.ele(selNotNan);
 
 % Interpolate position of CS event
 allSlips = [];
@@ -146,88 +170,90 @@ for i = 1:numel(GNScell)
     allSlips = [allSlips; CycleSlip.(GNScell{i})];
 end
 
-% % Figure of cycle-slip positions
-% figure('Position',[200 200 800 320])
-% cols = [1 0 0; 1 0 1; 0 0 1];
-% for i = 1:numel(GNScell)
-%     plot(CycleSlip.(GNScell{i})(:,1),CycleSlip.(GNScell{i})(:,2),'o','Color',cols(i,:))
-%     hold on; grid on; box on
-% end
-% xlabel('Azimuth (deg)')
-% ylabel('Elevation (deg)')
-% title('Cycle-slip positions')
-% legend(GNScell)
+% Get unique values
+allSlips = unique(allSlips,'rows');
+%totalNumberOfCS = size(allSlips,1);
+
+% Count cycle-slips in bins, set colorbar limits if not set
+binSize = [3,3];
+aziBins = 0:binSize(1):360;
+eleBins = 0:binSize(2):90;
+[N,~,~] = histcounts2(allSlips(:,1),allSlips(:,2),aziBins,eleBins);
+N = N';
+maxSlipsInBin = max(max(N));
+if isempty(options.colorBarLimits)
+    options.colorBarLimits = [0, maxSlipsInBin];
+end
+
+% Kernel smoothing (empirical parameter)
+empParam = 0.685;
+gaussKernel = fspecial('gaussian',binSize+[1,1],1.5);
+Nsmt = conv2(N,gaussKernel,'same');
+Nsmt = empParam^2*conv2(Nsmt,ones(binSize+[1,1]),'same');
+%maxSlipsInBinSmt = max(max(Nsmt));
+
+% % Figure: Position of cycle-slips
+% figure('Position',[0 200, 1200 400])
+% subplot(1,2,1)
+% plot(allSlips(:,1),allSlips(:,2),'.')
 % axis([0 360 0 90])
-% set(gca,'XTick',0:45:360,'YTick',0:30:90)
-
-% Compute kernel density
-aziBins = 0:3:360;
-eleBins = 0:3:90;
-[x1,x2] = meshgrid(aziBins, eleBins);
-x1 = x1(:);
-x2 = x2(:);
-xi = [x1 x2];
-density = ksdensity(allSlips,xi,'Bandwidth',[4.5, 4.5]);
-densityReshaped = reshape(density,[numel(eleBins), numel(aziBins)]);
-
-
-% figure('Position',[200 200 800 320])
-% imagesc('XData',aziBins,'YData',eleBins,'CData',densityReshaped,'AlphaData', 1)
-% axis([0 360 0 90])
-% set(gca,'XTick',0:45:360,'YTick',0:30:90)
-% hold on; grid on; box on
-% %plot(allSlips(:,1),allSlips(:,2),'k.')
+% grid on;
+% set(gca,'xtick',aziBins,'ytick',eleBins)
+% 
+% subplot(1,2,2)
+% imagesc(flipud(Nsmt));
 % colormap(flipud(hot))
+% c = colorbar;
+% c.Limits = [0 14];
+% caxis(c.Limits)
+% grid on; box on;
+% set(gca,'xtick',0.5:1:size(Nsmt,2)+0.5,'XTickLabel',strsplit(num2str(aziBins),' '))
+% set(gca,'ytick',0.5:1:size(Nsmt,1)+0.5,'YTickLabel',strsplit(num2str(fliplr(eleBins)),' '))
 
-% % Check for useDataMasking settings
-% if options.getMaskFromData
-%     visibleBins = getVisibilityMask(AZI.(GNScell{i}).vector,ELE.(GNScell{i}).vector,[3, 3],options.cutOffValue);
-%     densityReshaped(~visibleBins) = 0;
-% end
+% Check for useDataMasking settings
+if options.getMaskFromData
+    visibleBins = getVisibilityMask(allGNSSSatPos.azi,allGNSSSatPos.ele,[3, 3],options.cutOffValue);
+    Nsmt(~visibleBins(1:end-1,1:end-1)) = 0;
+end
 
 % Determine noSatZone bins
+[azig, eleg] = meshgrid(aziBins, eleBins);
 [x_edge,y_edge] = getNoSatZone('GPS',pos);
-xq = (90 - x2).*sind(x1);
-yq = (90 - x2).*cosd(x1);
+xq = (90 - eleg).*sind(azig);
+yq = (90 - eleg).*cosd(azig);
 in = inpolygon(xq,yq,x_edge,y_edge);
-densityReshaped(in) = 0;
+Nsmt(in(2:end,2:end)) = 0;
 
-% Create figure
+% Drawing skyplot
 figure('Position',[300 100 700 480],'NumberTitle', 'off','Resize','off')
-polarplot3d(flipud(densityReshaped),'PlotType','surfn','RadialRange',[0 90],'PolarGrid',{6,12},'GridStyle',':','AxisLocation','surf');
+polarplot3d(flipud(Nsmt),'PlotType','surfn','RadialRange',[0 90],'PolarGrid',{6,12},'GridStyle',':','AxisLocation','surf');
 view(90,-90)
+
+% Set colormap and colorbar
 colormap(flipud(hot))
+if options.colorBarOn
+    c = colorbar;
+    c.Limits = options.colorBarLimits;
+    c.Position = [c.Position(1)*1.02, c.Position(2)*1.4, 0.8*c.Position(3), c.Position(4)*0.9];
+    c.TickDirection = 'in';
+    c.LineWidth = 1.1;
+    c.FontSize = 10;
+    caxis(options.colorBarLimits)
+    ylabel(c,'Number of cycle-slips per bin','fontsize',10,'fontname','arial')
+else
+    caxis(options.colorBarLimits)
+end
+
 axis equal
 axis tight
 axis off
-
-disp('End')
-
-%     
-%     colormap(myColorMap)
-%     c = colorbar;
-%     colLimits = options.colorBarLimits;
-%     colLimits(1) = colLimits(1) + 5;
-%     c.Limits = colLimits;
-%     c.Ticks = options.colorBarTicks;
-%     c.Position = [c.Position(1)*1.02, c.Position(2)*1.4, 0.8*c.Position(3), c.Position(4)*0.9];
-%     c.TickDirection = 'in';
-%     c.LineWidth = 1.1;
-%     c.FontSize = 10;
-%     
-%     caxis(options.colorBarLimits)
-%     ylabel(c,sprintf('%s RMS MP%s value (cm)',GNScell{i},MPcode),'fontsize',10,'fontname','arial')
-%     axis equal
-%     axis tight
-%     axis off
-%     hold on
-%     text(60,0,-100,'30','FontSize',10,'HorizontalAlignment','center','background','w','fontname','arial','FontWeight','bold')
-%     text(30,0,-100,'60','FontSize',10,'HorizontalAlignment','center','background','w','fontname','arial','FontWeight','bold')
-
+hold on
+text(60,0,-100,'30','FontSize',10,'HorizontalAlignment','center','background','w','fontname','arial','FontWeight','bold')
+text(30,0,-100,'60','FontSize',10,'HorizontalAlignment','center','background','w','fontname','arial','FontWeight','bold')
 
 % Exporting figure
 if saveFig == true
-    splittedInputName = strsplit(xtrFileName,'.');
-    figName = [splittedInputName{1}, '_GNSS_cycle-slips'];
+    splittedInputName = strsplit(xtrFileName,{'.','/'});
+    figName = [fullfile(options.figSavePath, splittedInputName{end-1}), '_allGNSS_cycle-slips'];
     print(figName,'-dpng',sprintf('-r%s',options.figResolution))
 end

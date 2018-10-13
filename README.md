@@ -18,6 +18,14 @@ xtr2CSskyplot('example/xtr/GANP.xtr')
 ```
 
 #### Examples
+* MP combination skyplots
+
 <p align="center">
   <img src="example/img/GANP_GNSS_MPC1.png" width="1000"/>
+</p>
+
+* Cycle-slips density skyplot
+
+<p align="center">
+  <img src="example/img/GANP_allGNSS_cycle-slips.png" width="362"/>
 </p>
