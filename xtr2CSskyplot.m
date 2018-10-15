@@ -27,6 +27,7 @@ funDir = strsplit(mfilename('fullpath'),'/');
 
 % Default options
 opt = struct('colorBarLimits',[],...
+             'colorBarTicks',0:2:10,...
              'colorBarOn',true,...
              'figResolution','200',...
              'figSavePath',strjoin(funDir(1:end-1),'/'),...
@@ -226,7 +227,8 @@ Nsmt(in(2:end,2:end)) = 0;
 
 % Drawing skyplot
 figure('Position',[300 100 700 480],'NumberTitle', 'off','Resize','off')
-polarplot3d(flipud(Nsmt),'PlotType','surfn','RadialRange',[0 90],'PolarGrid',{6,12},'GridStyle',':','AxisLocation','surf');
+polarplot3d(flipud(Nsmt),'PlotType','surfn','RadialRange',[0 90],'PolarGrid',{6,12},...
+                         'GridStyle',':','AxisLocation','surf');
 view(90,-90)
 
 % Set colormap and colorbar
@@ -234,6 +236,7 @@ colormap(flipud(hot))
 if options.colorBarOn
     c = colorbar;
     c.Limits = options.colorBarLimits;
+    c.Ticks = options.colorBarTicks;
     c.Position = [c.Position(1)*1.02, c.Position(2)*1.4, 0.8*c.Position(3), c.Position(4)*0.9];
     c.TickDirection = 'in';
     c.LineWidth = 1.1;

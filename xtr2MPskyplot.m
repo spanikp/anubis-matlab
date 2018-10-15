@@ -1,4 +1,4 @@
-function xtr2MPskyplot(xtrFileName, MPcode, saveFig, options)
+function out = xtr2MPskyplot(xtrFileName, MPcode, saveFig, options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Function to read Gnut-Anubis XTR output file and make MP skyplot graphs.
 % Process iterates through all available satellite systems (it will
@@ -148,6 +148,11 @@ for i = 1:length(GNScell)
     MP.(GNScell{i}).vector = MP.(GNScell{i}).vals(sel);
 end
 
+% Put output together
+out.AZI = AZI;
+out.ELE = ELE;
+out.MP = MP;
+
 allGNSSSatPos.azi = allGNSSSatPos.azi(:);
 allGNSSSatPos.ele = allGNSSSatPos.ele(:);
 selNotNan = ~isnan(allGNSSSatPos.azi) & ~isnan(allGNSSSatPos.ele);
@@ -186,7 +191,8 @@ for i = 1:length(GNScell)
     
     % Create figure
     figure('Position',[300 100 700 480],'NumberTitle', 'off','Resize','off')
-    polarplot3d(flipud(mpg),'PlotType','surfn','RadialRange',[0 90],'PolarGrid',{6,12},'GridStyle',':','AxisLocation','surf');
+    polarplot3d(flipud(mpg),'PlotType','surfn','RadialRange',[0 90],'PolarGrid',{6,12},...
+                              'GridStyle',':','AxisLocation','surf','TickSpacing',15);
     view(90,-90)
     
     % Set colormap and control colorbar
